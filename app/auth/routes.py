@@ -55,7 +55,7 @@ def register():
 
     # Optionally return a token immediately
     access_token = create_access_token(
-        identity=user.id,
+        identity=str(user.id),   # <-- FIX
         additional_claims={"role": user.role.value, "name": user.name},
         expires_delta=timedelta(hours=1),
     )
@@ -93,7 +93,7 @@ def login():
         return jsonify({"message": "Invalid email or password."}), 401
 
     access_token = create_access_token(
-        identity=user.id,
+        identity=str(user.id),   # <-- FIX
         additional_claims={"role": user.role.value, "name": user.name},
         expires_delta=timedelta(hours=1),
     )
@@ -116,7 +116,7 @@ def login():
 @auth_bp.get("/me")
 @jwt_required()
 def me():
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     user = db.session.get(User, current_user_id)
 
     if not user:
