@@ -4,14 +4,12 @@ from app import db
 import sqlalchemy as sa
 from sqlalchemy import Enum
 from pydantic import EmailStr
-from sqlalchemy import String, ForeignKey
 from passlib.context import CryptContext
+from sqlalchemy import String, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import sessionmaker, Mapped, mapped_column, relationship
-from typing import Optional
 
 
-# engine = sa.create_engine("postgresql://neondb_owner:npg_O2hT0HyIbsUz@ep-autumn-thunder-admy76mb-pooler.c-2.us-east-1.aws.neon.tech/testDB?sslmode=require&channel_binding=require", echo=True)
 pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto",
@@ -31,11 +29,15 @@ class User(db.Model):
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[RoleEnum] = mapped_column(Enum(RoleEnum), nullable=False)
+    faculty_id: Mapped[int] = mapped_column(ForeignKey("faculties.id"), nullable=True)
     
     courses_taught: Mapped[list["Course"]] = relationship("Course", back_populates="lecturer")
     enrollments: Mapped[list["Enrollment"]] = relationship("Enrollment", back_populates="student")
+    attendance_history: Mapped[list["Attendance"]] = relationship("Attendance", back_populates="student", cascade="all, delete-orphan")
+    faculty: Mapped["Faculties"] = relationship("Faculties", back_populates="users")
     
-    enrolled_courses = association_proxy('enrollments', 'course', creator=lambda c: Enrollment(course=c))    
+    enrolled_courses = association_proxy('enrollments', 'course', creator=lambda c: Enrollment(course=c))  
+    attended_sessions = association_proxy('attendance_history', 'session')  
     
     def __repr__(self) -> str:
         return f"User(id={self.id}, name={self.name}, email={self.email}, role={self.role})"
@@ -54,9 +56,12 @@ class Course(db.Model):
     title: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     description: Mapped[str] = mapped_column(String(1024), nullable=True)
     lecturer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    faculty_id: Mapped[int] = mapped_column(ForeignKey("faculties.id"), nullable=True)
     
     lecturer: Mapped["User"] = relationship("User", back_populates="courses_taught")
     enrollments: Mapped[list["Enrollment"]] = relationship("Enrollment", back_populates="course")
+    attendance_history: Mapped[list["Attendance"]] = relationship("Attendance", back_populates="student", cascade="all, delete-orphan")
+    faculty: Mapped["Faculties"] = relationship("Faculties", back_populates="courses")
     
     enrolled_students = association_proxy('enrollments', 'student', creator=lambda s: Enrollment(student=s))
     
@@ -72,8 +77,8 @@ class Enrollment(db.Model):
     
     course: Mapped["Course"] = relationship("Course", back_populates="enrollments")
     student: Mapped["User"] = relationship("User", back_populates="enrollments")
-
-    def _init_(self, course=None, student=None):
+    
+    def __init__(self, course=None, student=None):
         self.course = course
         self.student = student
 
@@ -81,59 +86,57 @@ class Enrollment(db.Model):
         return f"Enrollment(course_id={self.course_id}, student_id={self.student_id})"
 
 
-
-# Base.metadata.create_all(engine)
-# SessionLocal = sessionmaker(bind=db.engine, autoflush=False, autocommit=False)
-
-# def get_db_session():
-#     session = SessionLocal()
-#     try:
-#         yield session
-#     finally:
-#         session.close()
-        
-# if __name__ == "__main__":
-#     # Example usage
-#     with SessionLocal() as session:
-        # new_user_1 = User(name="mido absalam", email="mido@gmail.com", role=RoleEnum.admin)
-        # new_user_2 = User(name="ahmed ragab", email="aragab@gmail.com", role=RoleEnum.student)
-        # new_user_3 = User(name="mahmoud ragab", email="mragab@gmail.com", role=RoleEnum.admin)
-        # new_user_4 = User(name="ahmed badawy", email="badawy@gmail.com", role=RoleEnum.lecturer)
-        # fake_user = User(name="John Doe", email="mido@gmail.com", role=RoleEnum.admin)
-        # fake_user.set_password("securepassword123")
-        
-        # new_user_1.set_password("securepassword123")
-        # new_user_2.set_password("mypassword456")
-        # new_user_3.set_password("adminpassword789")
-        # new_user_4.set_password("lecturerpassword012")
-        
-        # session.add(new_user_1)
-        # session.add(new_user_2)
-        # session.add(new_user_3)
-        # session.add(new_user_4)
-        # session.add(fake_user)
-        
-        # session.commit()
-        
-        # print("\n\n")
-        # print(f"Created users: {new_user_1}, {new_user_2}, {new_user_3}, {new_user_4}")
-        # print("\n\n")
-        
-        # fetched_user = session.query(User).filter_by(id=4).first()
-        # print(f"\n\nFetched user: {fetched_user}\n\n")
-        
-        # print(f"\n\navailable courses for {fetched_user.name}: {fetched_user.courses}\n\n")
-        
-        # print(fetched_user.verify_password("securepassword123"))  # Should return True
-        # print(new_user_2.verify_password("wrongpassword"))  # Should return False
-        
-        # new_course = Course(title="Database Systems", description="An introduction to database systems.", lecturer_id=4)
-        # session.add(new_course)
-        # session.commit()
-        
-        # fetched_course = session.query(Course).first()
-        # print(f"fetched course: {fetched_course}")
-        # print(f"Lecturer of the course: {fetched_course.lecturer}")
-
+class Session(db.Model):
+    __tablename__ = "sessions"
     
-        
+    session_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"), nullable=False)
+    lecturer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[sa.DateTime] = mapped_column(sa.DateTime, server_default=sa.func.now(), nullable=False)
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, default=True, nullable=False)
+    major: Mapped[int] = mapped_column(nullable=False)
+    minor: Mapped[int] = mapped_column(nullable=False)
+    
+    course: Mapped["Course"] = relationship("Course")
+    lecturer: Mapped["User"] = relationship("User")
+    
+    attendance_logs: Mapped[list["Attendance"]] = relationship("Attendance", back_populates="session", cascade="all, delete-orphan")
+    
+    attendees = association_proxy('attendance_logs', 'student')
+
+    def __repr__(self) -> str:
+        return f"Session(id={self.session_id}, major={self.major}, minor={self.minor})"
+
+
+class Attendance(db.Model):
+    __tablename__ = "attendance_logs"
+    
+    log_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.session_id"), nullable=False)
+    student_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    
+    scan_time: Mapped[sa.DateTime] = mapped_column(sa.DateTime, server_default=sa.func.now(), nullable=False)
+    
+    student: Mapped["User"] = relationship("User", back_populates="attendance_history")
+    session: Mapped["Session"] = relationship("Session", back_populates="attendance_logs")
+    
+    __table_args__ = (
+        UniqueConstraint('session_id', 'student_id', name='_unique_student_session'),
+    )
+
+    def __repr__(self) -> str:
+        return f"Attendance(student={self.student_id}, session={self.session_id})"
+
+
+class Faculties(db.Model):
+    __tablename__ = "faculties"
+    
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    
+    courses: Mapped[list["Course"]] = relationship("Course", back_populates="faculty")
+    users: Mapped[list["User"]] = relationship("User", back_populates="faculty")
+    
+    def __repr__(self) -> str:
+        return f"Faculties(id={self.id}, name={self.name})"
