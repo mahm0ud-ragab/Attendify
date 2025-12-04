@@ -60,7 +60,6 @@ class Course(db.Model):
     
     lecturer: Mapped["User"] = relationship("User", back_populates="courses_taught")
     enrollments: Mapped[list["Enrollment"]] = relationship("Enrollment", back_populates="course")
-    attendance_history: Mapped[list["Attendance"]] = relationship("Attendance", back_populates="student", cascade="all, delete-orphan")
     faculty: Mapped["Faculties"] = relationship("Faculties", back_populates="courses")
     
     enrolled_students = association_proxy('enrollments', 'student', creator=lambda s: Enrollment(student=s))
