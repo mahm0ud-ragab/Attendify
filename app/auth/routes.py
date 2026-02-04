@@ -43,10 +43,13 @@ def register():
         return jsonify({"message": "Email is already registered."}), 409
 
     # Create user
+    device_id = data.get("device_id")
+
     user = User(
         name=body.name,
         email=body.email,
         role=RoleEnum(body.role),
+        device_id=device_id
     )
     user.set_password(body.password)
 
@@ -90,6 +93,20 @@ def login():
     user = User.query.filter_by(email=body.email).first()
     if not user or not user.verify_password(body.password):
         return jsonify({"message": "Invalid email or password."}), 401
+    
+    device_id = data.get("device_id")
+
+    if not device_id:
+        return jsonify({"message": "Device ID required"}), 400
+
+    if user.device_id is None:
+        user.device_id = device_id
+        db.session.commit()
+
+    elif user.device_id != device_id:
+        return jsonify({
+            "message": "This account is already linked to another device"
+        }), 403
 
     # FIXED: Convert ID to string
     access_token = create_access_token(

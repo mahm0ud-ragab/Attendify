@@ -37,6 +37,7 @@ class User(db.Model):
     password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[RoleEnum] = mapped_column(Enum(RoleEnum), nullable=False)
     faculty_id: Mapped[int] = mapped_column(ForeignKey("faculties.id"), nullable=True)
+    device_id: Mapped[str] = mapped_column(String(255), nullable=True)
     
     courses_taught: Mapped[list["Course"]] = relationship("Course", back_populates="lecturer")
     enrollments: Mapped[list["Enrollment"]] = relationship("Enrollment", back_populates="student")
@@ -67,7 +68,6 @@ class Course(db.Model):
     
     lecturer: Mapped["User"] = relationship("User", back_populates="courses_taught")
     enrollments: Mapped[list["Enrollment"]] = relationship("Enrollment", back_populates="course")
-    attendance_history: Mapped[list["Attendance"]] = relationship("Attendance", back_populates="student", cascade="all, delete-orphan")
     faculty: Mapped["Faculties"] = relationship("Faculties", back_populates="courses")
     
     enrolled_students = association_proxy('enrollments', 'student', creator=lambda s: Enrollment(student=s))
