@@ -181,6 +181,7 @@ def mark_attendance():
     new_log = Attendance(
         session_id=session.session_id,
         student_id=student.id,
+        checkin_method=CheckInEnum.ble,
         scan_time=scan_time
     )
 
